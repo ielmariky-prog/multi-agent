@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: reasoning-agent
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    topics:
+      reasoning-input: ${REASONING_INPUT_TOPIC:reasoning-input-topic}
+      reasoning-output: ${REASONING_OUTPUT_TOPIC:reassign-input-topic}
+      documents-raw: ${DOCUMENTS_RAW_TOPIC:documents.raw}
+    consumer:
+      group-id: ${REASONING_GROUP_ID:reasoning-agent-group}
+      auto-offset-reset: latest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+
+reasoning-agent:
+  ai-core:
+    base-url: ${AI_CORE_URL:http://ai-core:8081}
+    analyze-path: /reasoning/analyze
+    timeout: ${AI_CORE_TIMEOUT:8s}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ["prometheus", "health"]

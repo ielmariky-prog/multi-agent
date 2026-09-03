@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intent-agent-config
+  namespace: multi-agent
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka.multi-agent.svc.cluster.local:9092"
+  INTENT_INPUT_TOPIC: "intent-input-topic"
+  INTENT_OUTPUT_TOPIC: "reasoning-input-topic"
+  INTENT_GROUP_ID: "intent-agent-group"
+  AI_CORE_URL: "http://ai-core.multi-agent.svc.cluster.local:8081"
+  AI_CORE_CLASSIFY_PATH: "/intent/classify"
+  AI_CORE_TIMEOUT: "8s"

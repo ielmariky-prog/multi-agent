@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reassign-agent
+  namespace: multi-agent
+  labels:
+    app: reassign-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reassign-agent
+  template:
+    metadata:
+      labels:
+        app: reassign-agent
+    spec:
+      containers:
+        - name: reassign-agent
+          image: reassign-agent:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8084
+              name: http
+          envFrom:
+            - configMapRef:
+                name: reassign-agent-config
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8084
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8084
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reassign-agent
+  namespace: multi-agent
+spec:
+  selector:
+    app: reassign-agent
+  ports:
+    - name: http
+      port: 8084
+      targetPort: 8084

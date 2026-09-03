@@ -1,0 +1,25 @@
+server:
+  port: ${SERVER_PORT:8082}
+
+spring:
+  application:
+    name: intent-agent
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    topics:
+      intent-input: ${INTENT_INPUT_TOPIC:intent-input-topic}
+      intent-output: ${INTENT_OUTPUT_TOPIC:reasoning-input-topic}
+    consumer:
+      group-id: ${INTENT_GROUP_ID:intent-agent-group}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+intent-agent:
+  ai-core:
+    base-url: ${AI_CORE_URL:http://ai-core:8081}
+    classify-path: ${AI_CORE_CLASSIFY_PATH:/intent/classify}
+    timeout: ${AI_CORE_TIMEOUT:8s}

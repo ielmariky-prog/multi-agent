@@ -1,0 +1,87 @@
+# ============================================================
+# OBJET 1 : Deployment
+# Décrit COMMENT Kubernetes doit lancer et gérer ai-core
+# ============================================================
+apiVersion: apps/v1   # version de l'API K8s pour les Deployments
+kind: Deployment      # type d'objet : gère le cycle de vie des containers (lancement, restart, scaling)
+metadata:
+  name: ai-core         # nom du Deployment dans K8s
+  namespace: multi-agent # namespace où ce Deployment est créé (doit exister via namespace.yaml)
+spec:                 # "spec" = la spécification : ce qu'on veut que K8s fasse
+
+  replicas: 1         # 1 seule instance en dev local (2 en production)
+
+  selector:           # comment K8s identifie les pods qui appartiennent à ce Deployment
+    matchLabels:
+      app: ai-core    # "gère tous les pods qui ont le label app=ai-core"
+
+  template:           # modèle utilisé pour créer chaque pod
+    metadata:
+      labels:
+        app: ai-core  # label collé sur chaque pod créé → permet au selector ci-dessus de les retrouver
+                      # et au Service (objet 2) de leur envoyer du trafic
+
+    spec:             # spécification du contenu du pod
+      containers:     # liste des containers dans ce pod (ici un seul)
+      - name: ai-core                              # nom du container (informatif)
+        image: ai-core:local        # image buildée localement : docker build -t ai-core:local ./ai-core
+        imagePullPolicy: Never      # Never = n'essaie jamais de télécharger depuis Docker Hub → utilise l'image locale
+        ports:
+        - containerPort: 8081   # port sur lequel l'application écoute DANS le container
+                                # correspond à "server.port: 8081" dans application.yml
+
+        envFrom:                # injecte des variables d'environnement depuis des sources externes
+        - configMapRef:
+            name: multi-agent-config  # charge TOUTES les variables du ConfigMap "multi-agent-config"
+                                      # (KAFKA_BOOTSTRAP_SERVERS, WEAVIATE_HOST, prompts GPT, etc.)
+        - secretRef:
+            name: anthropic-secret    # charge ANTHROPIC_API_KEY et VOYAGE_API_KEY
+
+        livenessProbe:          # sonde de VIE : K8s vérifie régulièrement si le container est vivant
+          httpGet:              # méthode de vérification : appel HTTP GET
+            path: /actuator/health/liveness  # endpoint Spring Boot Actuator qui répond "UP" ou "DOWN"
+            port: 8081          # port à appeler
+          initialDelaySeconds: 30  # attend 30 secondes après le démarrage avant de commencer à vérifier
+                                   # (laisse le temps à Spring Boot de démarrer complètement)
+          # si la sonde échoue → K8s tue et redémarre automatiquement le container
+
+        readinessProbe:         # sonde de DISPONIBILITÉ : K8s vérifie si le container est prêt à recevoir du trafic
+          httpGet:
+            path: /actuator/health/readiness  # endpoint différent de liveness
+            port: 8081
+          initialDelaySeconds: 10  # attend seulement 10s (la readiness est vérifiée avant la liveness)
+          # si la sonde échoue → K8s ne lui envoie plus de trafic (mais ne le tue pas)
+          # utile pendant le démarrage : le pod existe mais n'est pas encore "prêt"
+
+        volumeMounts:           # monte un volume (stockage) dans le container
+          - name: receipts-storage     # nom du volume à monter (défini dans "volumes" ci-dessous)
+            mountPath: /data/receipts  # chemin dans le container où les justificatifs uploadés sont stockés
+                                       # correspond à AI_CORE_RECEIPTS_STORAGE_PATH dans le configMap
+
+      volumes:                  # définition des volumes disponibles pour ce pod
+        - name: receipts-storage  # nom du volume (référencé dans volumeMounts)
+          emptyDir: {}            # type "emptyDir" = dossier temporaire créé par K8s
+                                  # ⚠️ VIDE à chaque redémarrage du pod → les fichiers sont perdus
+                                  # en production, remplacer par un PersistentVolumeClaim (PVC)
+
+---
+# "---" sépare deux objets K8s dans le même fichier
+# ============================================================
+# OBJET 2 : Service
+# Décrit COMMENT accéder à ai-core depuis d'autres services
+# ============================================================
+apiVersion: v1        # version de l'API K8s pour les Services
+kind: Service         # type d'objet : crée un point d'accès réseau stable vers les pods
+metadata:
+  name: ai-core         # nom du Service → crée un DNS interne : "ai-core.multi-agent.svc.cluster.local"
+                        # les autres agents peuvent joindre ai-core via "http://ai-core:8081"
+  namespace: multi-agent
+spec:
+  selector:
+    app: ai-core      # redirige le trafic vers tous les pods qui ont le label "app=ai-core"
+                      # si 2 replicas tournent → K8s répartit les requêtes entre les 2 (load balancing)
+
+  ports:
+  - port: 8081        # port exposé sur le réseau K8s (ce que les autres services appellent)
+    targetPort: 8081  # port du container vers lequel rediriger (doit correspondre à containerPort)
+                      # ici port == targetPort, mais on pourrait exposer le 80 et rediriger vers le 8081

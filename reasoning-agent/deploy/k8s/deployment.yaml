@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reasoning-agent
+  namespace: multi-agent
+  labels:
+    app: reasoning-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reasoning-agent
+  template:
+    metadata:
+      labels:
+        app: reasoning-agent
+    spec:
+      containers:
+        - name: reasoning-agent
+          image: reasoning-agent:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: reasoning-agent-config
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reasoning-agent
+  namespace: multi-agent
+spec:
+  selector:
+    app: reasoning-agent
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

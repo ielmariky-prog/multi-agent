@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notes de frais — Multi-Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <p class="eyebrow">Notes de frais</p>
+        <h1>Assistant multi-agent</h1>
+        <p class="lede">Envoie une demande en langage naturel, uploade un justificatif ou consulte ton rapport de dépenses.</p>
+      </div>
+      <div class="endpoint">
+        <label for="api-url">Endpoint AI-Core</label>
+        <input id="api-url" type="text" placeholder="http://localhost:8081">
+        <small>Modifie si l'API tourne ailleurs</small>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- Chat / Pipeline -->
+      <section class="card chat">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Langage naturel</p>
+            <h2>Envoyer une demande</h2>
+          </div>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" type="text"
+            placeholder="Ex : j'ai payé un taxi 42 EUR aujourd'hui, génère une facture pour Acme…" />
+          <button id="chat-send">Envoyer</button>
+        </div>
+        <div id="chat-status" class="status"></div>
+      </section>
+
+      <!-- Rapport de dépenses -->
+      <section class="card report">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Rapport</p>
+            <h2>Dépenses</h2>
+          </div>
+          <button id="report-load">Charger</button>
+        </div>
+        <div class="report-filters">
+          <label class="inline">
+            Début
+            <input id="filter-start" type="date" />
+          </label>
+          <label class="inline">
+            Fin
+            <input id="filter-end" type="date" />
+          </label>
+          <label class="inline">
+            Type
+            <input id="filter-type" type="text" placeholder="transport, repas…" />
+          </label>
+          <label class="inline">
+            Devise
+            <input id="filter-currency" type="text" placeholder="EUR, USD…" />
+          </label>
+        </div>
+        <div id="report-status" class="status"></div>
+        <div id="report-summary" class="report-summary hidden"></div>
+        <div class="table-wrap">
+          <table id="report-table" class="hidden">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Montant</th>
+                <th>Devise</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody id="report-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Upload justificatif -->
+      <section class="card upload">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Fichier</p>
+            <h2>Déposer un justificatif</h2>
+          </div>
+          <div class="controls">
+            <label class="inline">
+              Mode de paiement
+              <select id="payment-mode">
+                <option value="Personnel">Personnel</option>
+                <option value="Business">Business</option>
+              </select>
+            </label>
+          </div>
+          <label class="file-button">
+            Choisir un fichier
+            <input id="file-input" type="file" accept=".jpg,.jpeg,.png,.pdf" />
+          </label>
+        </div>
+        <div class="preview" id="preview"></div>
+        <div id="upload-status" class="status"></div>
+      </section>
+
+      <!-- Caméra -->
+      <section class="card camera">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Caméra</p>
+            <h2>Prendre une photo</h2>
+          </div>
+          <div class="actions">
+            <button id="start-camera">Activer la caméra</button>
+            <button id="capture" disabled>Capturer</button>
+          </div>
+        </div>
+        <div class="camera-wrap">
+          <video id="video" autoplay playsinline></video>
+          <canvas id="canvas" class="hidden"></canvas>
+        </div>
+        <div id="camera-status" class="status"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

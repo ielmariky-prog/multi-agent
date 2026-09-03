@@ -1,0 +1,7 @@
+Retourne STRICTEMENT un JSON array de dépenses:
+[
+  { "amount": ..., "currency": "...", "type": "...", "date": "...", "description": "...", "originalText": "..." }
+]
+
+Documents :
+%s

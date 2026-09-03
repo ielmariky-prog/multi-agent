@@ -1,0 +1,39 @@
+# Development Configuration Override
+# Apply with: kubectl apply -f config-development.yaml
+# For single node development setup
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-dev-config
+  namespace: agent-system
+data:
+  # Minimal resource settings
+  num.network.threads: "4"
+  num.io.threads: "4"
+  
+  # Shorter retention for dev
+  log.retention.hours: "24"  # 1 day
+  log.retention.bytes: "1073741824"  # 1GB per partition
+  
+  # Faster cleanup for testing
+  log.segment.delete.delay.ms: "60000"  # 1 minute
+  
+  # Single replica acceptable in dev
+  default.replication.factor: "1"
+  min.insync.replicas: "1"
+---
+# Development Resource Limits (Lower)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-dev-resources
+  namespace: agent-system
+data:
+  replicas: "1"
+  cpu-request: "500m"
+  cpu-limit: "1000m"
+  memory-request: "1Gi"
+  memory-limit: "2Gi"
+  heap-size: "768m"
+  storage-size: "10Gi"

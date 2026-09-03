@@ -1,0 +1,61 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: reassign-agent
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+    consumer:
+      group-id: ${KAFKA_REASSIGN_GROUP_ID:reassign-agent-group}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: "*"
+        spring.json.value.default.type: io.multiagent.reassign.dto.ReasoningMessageDTO
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+# =========================
+# AI-Core configuration
+# =========================
+ai-core:
+  url: ${AI_CORE_URL:http://localhost:8080/ai-core}
+
+# =========================
+# Kafka topics
+# =========================
+kafka:
+  reassign:
+    # Topic consommé depuis reasoning-agent
+    input-topic: ${KAFKA_REASSIGN_INPUT_TOPIC:reassign-input-topic}
+
+    # Topic produit vers audit-agent ou downstream
+    output-topic: ${KAFKA_REASSIGN_OUTPUT_TOPIC:reassign-output-topic}
+
+    group-id: ${KAFKA_REASSIGN_GROUP_ID:reassign-agent-group}
+
+app:
+  kafka:
+    topics:
+      workflow: ${KAFKA_REASSIGN_OUTPUT_TOPIC:reassign-output-topic}
+
+# =========================
+# Logging
+# =========================
+logging:
+  level:
+    root: INFO
+    io.multiagent: DEBUG
+    org.springframework.kafka: INFO
+    org.apache.kafka: WARN

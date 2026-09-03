@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: weaviate
+  namespace: agent-system
+spec:
+  ports:
+    - port: 8085
+      targetPort: 8080
+  selector:
+    app: weaviate
+  type: ClusterIP

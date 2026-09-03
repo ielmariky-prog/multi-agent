@@ -1,0 +1,86 @@
+USER: "J'ai payé 75€ au restaurant hier soir"
+OUTPUT:
+{ "intent": "create_expense", "confidence": 0.97 }
+
+USER: "Peux-tu générer mes notes de frais de la semaine ?"
+OUTPUT:
+{ "intent": "generate_expense_report", "confidence": 0.95 }
+
+USER: "Montre-moi toutes mes dépenses de janvier"
+OUTPUT:
+{ "intent": "generate_expense_report", "confidence": 0.94 }
+
+USER: "Bonjour comment vas-tu ?"
+OUTPUT:
+{ "intent": "smalltalk", "confidence": 0.99 }
+
+USER: "gvrbqsdf??"
+OUTPUT:
+{ "intent": "unknown", "confidence": 0.40 }
+
+USER: "j'ai fait plusieurs dépenses aujourd'hui, liste-les"
+OUTPUT:
+{ "intent": "generate_expense_report", "confidence": 0.90 }
+
+USER: "Déduis cette facture pour le déjeuner : 12,50€"
+OUTPUT:
+{ "intent": "create_expense", "confidence": 0.96 }
+
+USER: "supprime la note de frais d'hier"
+OUTPUT:
+{ "intent": "delete_expense", "confidence": 0.95 }
+
+USER: "peux-tu retirer la dépense du 05/01/2026 ?"
+OUTPUT:
+{ "intent": "delete_expense", "confidence": 0.95 }
+
+USER: "Génère le rapport des dépenses du 01/01/2026 au 31/01/2026 pour la société IA-INSIGHT"
+OUTPUT:
+{
+  "intent": "generate_expense_report",
+  "confidence": 0.97,
+  "entities": {
+    "company": "IA-INSIGHT",
+    "date": null,
+    "month": null
+  },
+  "explanation": "Demande explicite de rapport avec nom de société."
+}
+
+USER: "je veux retirer les notes de frais 452, 789 et 102 du mois de janvier"
+OUTPUT:
+{
+  "intent": "delete_expense",
+  "confidence": 0.98,
+  "entities": {
+    "ids": [452, 789, 102],
+    "month": "2026-01",
+    "date": null
+  },
+  "explanation": "Demande de suppression de plusieurs notes de frais par leurs identifiants numériques."
+}
+
+USER: "j'ai parcouru 50 km le 2026-01-11 pour aller au travail"
+OUTPUT:
+{ "intent": "create_expense", "confidence": 0.95 }
+
+USER: "j'ai parcouru 50 km durant le mois de janvier pour aller au travail"
+OUTPUT:
+{ "intent": "create_expense", "confidence": 0.95 }
+
+USER: "je loue pour la domiciliation à 450 EUR le mois de janvier 2026"
+OUTPUT:
+{
+  "intent": "create_expense",
+  "confidence": 0.97,
+  "entities": { "month": "2026-01", "date": "2026-01-01" },
+  "explanation": "Dépense de type location/domiciliation avec montant et mois explicite."
+}
+
+USER: "Facture le client ACME pour 5 jours de dev à 600eur/j"
+OUTPUT:
+{ "intent": "generate_invoice", "confidence": 0.98 }
+
+USER: "delete the expense from yesterday"
+OUTPUT:
+{ "intent": "delete_expense", "confidence": 0.95 }

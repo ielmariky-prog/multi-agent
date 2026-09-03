@@ -1,0 +1,42 @@
+# Production Configuration Override
+# Apply with: kubectl apply -f config-production.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-production-config
+  namespace: agent-system
+data:
+  # Enhanced performance settings
+  num.network.threads: "16"
+  num.io.threads: "16"
+  socket.send.buffer.bytes: "1048576"  # 1MB
+  socket.receive.buffer.bytes: "1048576"  # 1MB
+  
+  # Larger batch sizes for better throughput
+  batch.size: "32768"  # 32KB
+  linger.ms: "10"
+  
+  # Compression for better network utilization
+  compression.type: "lz4"
+  
+  # Longer retention for production
+  log.retention.hours: "336"  # 14 days
+  log.retention.bytes: "10737418240"  # 10GB per partition
+  
+  # Monitoring
+  metric.reporters: "io.confluent.metrics.reporter.ConfluentMetricsReporter"
+---
+# Production Resource Limits (Higher)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-production-resources
+  namespace: agent-system
+data:
+  cpu-request: "2000m"
+  cpu-limit: "4000m"
+  memory-request: "4Gi"
+  memory-limit: "8Gi"
+  heap-size: "3072m"
+  storage-size: "50Gi"

@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-agent
+  namespace: multi-agent
+  labels:
+    app: audit-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-agent
+  template:
+    metadata:
+      labels:
+        app: audit-agent
+    spec:
+      containers:
+        - name: audit-agent
+          image: audit-agent:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8085
+              name: http
+          envFrom:
+            - configMapRef:
+                name: audit-agent-config
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8085
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8085
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-agent
+  namespace: multi-agent
+spec:
+  selector:
+    app: audit-agent
+  ports:
+    - name: http
+      port: 8085
+      targetPort: 8085

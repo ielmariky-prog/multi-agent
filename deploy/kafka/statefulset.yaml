@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: agent-system
+  labels:
+    app: kafka
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+  - name: client
+    port: 9092
+    targetPort: 9092
+  - name: controller
+    port: 9093
+    targetPort: 9093
+  - name: internal
+    port: 9094
+    targetPort: 9094
+  selector:
+    app: kafka
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: agent-system
+  labels:
+    app: kafka
+spec:
+  type: ClusterIP
+  ports:
+  - name: client
+    port: 9092
+    targetPort: 9092
+  selector:
+    app: kafka
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: agent-system
+  labels:
+    app: kafka
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  podManagementPolicy: Parallel
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - kafka
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:7.7.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          set -euo pipefail
+          export KAFKA_NODE_ID=${HOSTNAME##*-}
+          export POD_NAME=${HOSTNAME}
+          export POD_NAMESPACE=${POD_NAMESPACE:-agent-system}
+          export CLUSTER_DOMAIN=${CLUSTER_DOMAIN:-cluster.local}
+          fqdn="${HOSTNAME}.kafka-headless.${POD_NAMESPACE}.svc.${CLUSTER_DOMAIN}"
+          export KAFKA_ADVERTISED_LISTENERS="PLAINTEXT://${fqdn}:9092,INTERNAL://${fqdn}:9094"
+          export KAFKA_CONTROLLER_QUORUM_VOTERS="0@kafka-0.kafka-headless.${POD_NAMESPACE}.svc.${CLUSTER_DOMAIN}:9093,1@kafka-1.kafka-headless.${POD_NAMESPACE}.svc.${CLUSTER_DOMAIN}:9093,2@kafka-2.kafka-headless.${POD_NAMESPACE}.svc.${CLUSTER_DOMAIN}:9093"
+          exec /etc/confluent/docker/run
+        ports:
+        - containerPort: 9092
+          name: client
+        - containerPort: 9093
+          name: controller
+        - containerPort: 9094
+          name: internal
+        env:
+        - name: CLUSTER_ID
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-cluster-id
+              key: cluster.id
+        - name: KAFKA_CLUSTER_ID
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-cluster-id
+              key: cluster.id
+        - name: KAFKA_PORT
+          value: ""  # suppress deprecated port; use listeners/advertised listeners instead
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CLUSTER_DOMAIN
+          value: "cluster.local"
+        - name: KAFKA_PROCESS_ROLES
+          value: "broker,controller"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://:9092,CONTROLLER://:9093,INTERNAL://:9094"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT"
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: "CONTROLLER"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "INTERNAL"
+        - name: KAFKA_LOG_DIRS
+          value: "/var/lib/kafka/data"
+        # Replication settings
+        - name: KAFKA_NUM_PARTITIONS
+          value: "1"
+        - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_MIN_INSYNC_REPLICAS
+          value: "1"
+        # Log retention
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "1"
+        - name: KAFKA_LOG_RETENTION_BYTES
+          value: "1073741824"
+        - name: KAFKA_LOG_SEGMENT_BYTES
+          value: "268435456"
+        # JVM settings
+        - name: KAFKA_HEAP_OPTS
+          value: "-Xms1g -Xmx1g"
+        resources:
+          requests:
+            memory: "1.5Gi"
+            cpu: "500m"
+            ephemeral-storage: "1Gi"
+          limits:
+            memory: "2Gi"
+            ephemeral-storage: "2Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kafka/data
+        livenessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi

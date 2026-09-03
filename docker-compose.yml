@@ -1,0 +1,226 @@
+version: "3.9"    # version du format docker-compose qu'on utilise (3.9 = la plus récente stable)
+
+services:          # "services" = liste de tous les containers qu'on veut lancer
+
+  # ─────────────────────────────────────────────────────────────
+  # KAFKA — le bus de messages entre les agents
+  # ─────────────────────────────────────────────────────────────
+  kafka:                              # nom du service (utilisé comme DNS interne par les autres services)
+    image: bitnami/kafka:3.7          # image Docker toute prête de Kafka version 3.7 (publiée sur Docker Hub)
+    container_name: kafka             # nom affiché dans "docker ps" et dans les logs
+    ports:
+      - "9092:9092"                   # expose le port 9092 sur ta machine → tu peux envoyer des messages depuis ton terminal
+                                      # format : "port_ta_machine:port_dans_le_container"
+    environment:                      # variables d'environnement injectées dans le container au démarrage
+      KAFKA_CFG_NODE_ID: "0"                                          # identifiant unique de ce nœud Kafka (on n'a qu'un seul nœud)
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"                    # ce nœud joue les deux rôles : broker (stocke les messages) + controller (gère le cluster) — c'est le mode KRaft, sans ZooKeeper
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"    # Kafka écoute sur deux ports : 9092 pour les messages, 9093 pour la gestion interne du cluster
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"        # adresse que Kafka annonce aux clients → "kafka:9092" = nom DNS interne Docker (les autres containers l'utilisent)
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"   # pas de chiffrement (on est en local) : les deux listeners utilisent le protocole PLAINTEXT
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"             # liste des nœuds qui votent pour élire le leader → ici un seul nœud : nœud 0 joignable sur kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"              # nom du listener réservé à la communication interne du cluster
+      ALLOW_PLAINTEXT_LISTENER: "yes"                                 # autorise les connexions non chiffrées (obligatoire en local car on n'a pas de certificat SSL)
+    healthcheck:                      # sonde de santé : Docker vérifie régulièrement si Kafka est prêt
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]   # commande qui réussit uniquement si Kafka répond → liste les topics existants
+      interval: 10s                   # vérifie toutes les 10 secondes
+      timeout: 10s                    # si la commande prend plus de 10s → échec
+      retries: 15                     # après 15 échecs consécutifs → container marqué "unhealthy"
+      start_period: 30s               # attend 30s avant de commencer à vérifier (Kafka met du temps à démarrer)
+
+  # ─────────────────────────────────────────────────────────────
+  # KAFKA INIT — crée les topics une seule fois au démarrage
+  # ─────────────────────────────────────────────────────────────
+  kafka-init:                         # service temporaire : se lance, crée les topics, puis s'arrête
+    image: bitnami/kafka:3.7          # même image que Kafka (contient les outils CLI kafka-topics.sh)
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy    # attend que Kafka soit complètement prêt (healthcheck vert) avant de s'exécuter
+    entrypoint: ["/bin/bash", "-c"]   # remplace la commande par défaut de l'image : on veut exécuter un script bash
+    command: >                        # ">" = chaîne de caractères sur plusieurs lignes en YAML
+      "
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic intent-input-topic     --partitions 3 --replication-factor 1 &&
+        # crée le topic "intent-input-topic" s'il n'existe pas déjà
+        # --partitions 3 = 3 partitions → permet à 3 consumers de lire en parallèle
+        # --replication-factor 1 = pas de réplication (on n'a qu'un seul nœud Kafka)
+        # && = exécute la commande suivante seulement si la précédente a réussi
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic reasoning-input-topic  --partitions 3 --replication-factor 1 &&
+        # topic où intent-agent publie → reasoning-agent écoute ici
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic reassign-input-topic   --partitions 3 --replication-factor 1 &&
+        # topic où reasoning-agent publie → reassign-agent écoute ici
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic audit.events.in        --partitions 3 --replication-factor 1 &&
+        # topic où reassign-agent publie → audit-agent écoute ici
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic audit.events.out       --partitions 3 --replication-factor 1 &&
+        # topic final où audit-agent publie (résultat archivé)
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.raw          --partitions 3 --replication-factor 1 &&
+        # topic pour archiver les documents bruts (texte original avant traitement)
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic workflow-output-topic  --partitions 3 --replication-factor 1 &&
+        # topic pour les événements de workflow (ex: demande d'info manquante à l'utilisateur)
+        echo '✅ Topics Kafka créés.'
+        # affiche un message de confirmation dans les logs
+      "
+
+  # ─────────────────────────────────────────────────────────────
+  # WEAVIATE — base de données vectorielle (stocke les dépenses)
+  # ─────────────────────────────────────────────────────────────
+  weaviate:
+    image: semitechnologies/weaviate:1.25.3    # image officielle de Weaviate version 1.25.3
+    container_name: weaviate
+    ports:
+      - "8080:8080"                            # expose l'API Weaviate → tu peux appeler http://localhost:8080 depuis ton terminal
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"    # pas de mot de passe en local → tout le monde peut lire/écrire
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"         # chemin dans le container où Weaviate stocke ses données sur le disque
+      QUERY_DEFAULTS_LIMIT: "20"                         # si une requête ne précise pas de limite → renvoie 20 résultats max
+      DEFAULT_VECTORIZER_MODULE: "none"                  # on ne laisse pas Weaviate créer les embeddings → c'est ai-core qui le fait via OpenAI
+    volumes:
+      - weaviate-data:/var/lib/weaviate        # monte le volume "weaviate-data" dans le container
+                                               # → les données survivent à un "docker compose down" et sont restaurées au prochain "docker compose up"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/.well-known/ready || exit 1"]
+      # appelle l'endpoint de Weaviate qui répond "true" quand il est prêt
+      # "|| exit 1" = si wget échoue → retourne le code erreur 1 → Docker marque unhealthy
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s                        # Weaviate démarre plus vite que Kafka → 20s suffisent
+
+  # ─────────────────────────────────────────────────────────────
+  # AI-CORE — cerveau du projet (OpenAI + Weaviate + logique métier)
+  # ─────────────────────────────────────────────────────────────
+  ai-core:
+    build:                                     # "build" = Docker va construire l'image lui-même (pas la télécharger)
+      context: ./ai-core                       # dossier source à envoyer à Docker pour construire l'image
+      dockerfile: Dockerfile                   # fichier de construction à utiliser dans ce dossier
+    container_name: ai-core
+    ports:
+      - "8081:8081"                            # expose l'API REST d'ai-core → tu peux appeler http://localhost:8081 depuis ton terminal
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}                      # lu depuis le fichier .env → ta clé secrète OpenAI (sk-...)
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"                  # adresse Kafka → "kafka" = nom DNS interne du container Kafka
+      WEAVIATE_HOST: "weaviate:8080"                         # adresse Weaviate → "weaviate" = nom DNS interne du container Weaviate
+      WEAVIATE_SCHEME: "http"                                # protocole HTTP (pas HTTPS en local)
+      WEAVIATE_EXPENSE_CLASS: "Expense"                      # nom de la classe Weaviate qui stocke les dépenses
+      WEAVIATE_INVOICE_CLASS: "Invoice"                      # nom de la classe Weaviate qui stocke les factures
+      OPENAI_MODEL: "gpt-4o-mini"                            # modèle GPT utilisé pour la classification et le RAG
+      OPENAI_EMBEDDING_MODEL: "text-embedding-3-large"       # modèle utilisé pour créer les vecteurs numériques
+      AI_CORE_COMPANY_NAME: ${AI_CORE_COMPANY_NAME:-IA-INSIGHT}  # nom de ta société → lu depuis .env, sinon "IA-INSIGHT" par défaut
+                                                             # syntaxe ${VAR:-valeur_par_defaut} = si VAR est vide → utilise "valeur_par_defaut"
+      AI_CORE_RECEIPTS_STORAGE_PATH: "/data/receipts"       # chemin dans le container où sont stockés les justificatifs uploadés (OCR)
+      AI_CORE_OCR_LANG: "eng+fra"                           # langues reconnues par Tesseract OCR : anglais + français
+      AI_CORE_EXPENSE_KM_PER_DAY: "50"                      # kilométrage journalier par défaut pour les frais km
+      AI_CORE_EXPENSE_KM_RATE_7CV: "0.661"                  # barème fiscal pour un véhicule de 7CV : 0.661€/km
+      AI_CORE_EXPENSE_KM_ANNUAL: "11000"                    # kilométrage annuel estimé (utilisé pour calculer la tranche du barème)
+      INTENT_INPUT_TOPIC: "intent-input-topic"              # topic Kafka où ai-core peut aussi publier (ex: après un OCR)
+      REASONING_INPUT_TOPIC: "reasoning-input-topic"        # topic Kafka utilisé par le scheduler de domiciliation
+      MONTHLY_LOCATION_ENABLED: "false"                     # désactive le scheduler automatique de domiciliation mensuelle
+                                                            # (en local on ne veut pas qu'il crée une dépense tous les mois automatiquement)
+    volumes:
+      - receipts-data:/data/receipts           # monte le volume pour les justificatifs → fichiers conservés entre redémarrages
+    depends_on:
+      kafka:
+        condition: service_healthy             # n'attend pas que kafka-init soit fini, juste que Kafka réponde
+      weaviate:
+        condition: service_healthy             # attend que Weaviate soit prêt avant de démarrer
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health || exit 1"]
+      # appelle l'endpoint Spring Boot Actuator → répond {"status":"UP"} quand l'appli est prête
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s                        # Spring Boot + chargement des prompts prend ~50s → on attend 60s avant de commencer
+
+  # ─────────────────────────────────────────────────────────────
+  # INTENT-AGENT — écoute "intent-input-topic", appelle /intent/classify
+  # ─────────────────────────────────────────────────────────────
+  intent-agent:
+    build:
+      context: ./intent-agent                  # compile l'image depuis le dossier intent-agent/
+      dockerfile: Dockerfile
+    container_name: intent-agent
+    ports:
+      - "8082:8082"                            # expose le port pour vérifier la santé : http://localhost:8082/actuator/health
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"    # adresse Kafka → pour écouter et publier des messages
+      AI_CORE_URL: "http://ai-core:8081"       # adresse d'ai-core → pour appeler POST /intent/classify
+      INTENT_INPUT_TOPIC: "intent-input-topic"          # topic que cet agent écoute (@KafkaListener)
+      INTENT_OUTPUT_TOPIC: "reasoning-input-topic"      # topic où cet agent publie après classification
+      AI_CORE_TIMEOUT: "30s"                   # si ai-core ne répond pas en 30s → erreur (OpenAI peut être lent)
+    depends_on:
+      kafka:
+        condition: service_healthy             # attend Kafka avant de démarrer
+      ai-core:
+        condition: service_healthy             # attend qu'ai-core soit complètement prêt (Spring Boot chargé + Weaviate connecté)
+
+  # ─────────────────────────────────────────────────────────────
+  # REASONING-AGENT — écoute "reasoning-input-topic", appelle /reasoning/analyze
+  # ─────────────────────────────────────────────────────────────
+  reasoning-agent:
+    build:
+      context: ./reasoning-agent
+      dockerfile: Dockerfile
+    container_name: reasoning-agent
+    # pas de ports exposés → cet agent n'a pas d'API REST à appeler depuis l'extérieur
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      AI_CORE_URL: "http://ai-core:8081"       # pour appeler POST /reasoning/analyze
+      REASONING_INPUT_TOPIC: "reasoning-input-topic"    # topic écouté
+      REASONING_OUTPUT_TOPIC: "reassign-input-topic"    # topic de publication après analyse
+      DOCUMENTS_RAW_TOPIC: "documents.raw"              # topic où il publie le texte brut original (archivage)
+      AI_CORE_TIMEOUT: "60s"                   # 60s car le pipeline RAG (OpenAI x3 + Weaviate) peut prendre du temps
+    depends_on:
+      kafka:
+        condition: service_healthy
+      ai-core:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────
+  # REASSIGN-AGENT — écoute "reassign-input-topic", appelle /reassign/assign ou /invoices/generate
+  # ─────────────────────────────────────────────────────────────
+  reassign-agent:
+    build:
+      context: ./reassign-agent
+      dockerfile: Dockerfile
+    container_name: reassign-agent
+    ports:
+      - "8084:8084"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      AI_CORE_URL: "http://ai-core:8081"            # pour appeler /reassign/assign ou /invoices/generate
+      KAFKA_REASSIGN_INPUT_TOPIC: "reassign-input-topic"   # topic écouté (vient de reasoning-agent)
+      KAFKA_REASSIGN_OUTPUT_TOPIC: "audit.events.in"       # topic de publication → audit-agent écoute ici
+      KAFKA_REASSIGN_GROUP_ID: "reassign-agent-group"      # identifiant du groupe de consumers Kafka
+                                                           # → plusieurs instances de cet agent partageraient le travail
+      AI_CORE_TIMEOUT_MS: "60000"               # 60 000 ms = 60s (en millisecondes car la variable Java l'attend ainsi)
+    depends_on:
+      kafka:
+        condition: service_healthy
+      ai-core:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────
+  # AUDIT-AGENT — écoute "audit.events.in", archive et republié dans "audit.events.out"
+  # ─────────────────────────────────────────────────────────────
+  audit-agent:
+    build:
+      context: ./audit-agent
+      dockerfile: Dockerfile
+    container_name: audit-agent
+    ports:
+      - "8085:8085"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      AUDIT_INPUT_TOPIC: "audit.events.in"       # topic écouté (vient de reassign-agent)
+      AUDIT_OUTPUT_TOPIC: "audit.events.out"     # topic final de publication (trace archivée)
+    depends_on:
+      kafka:
+        condition: service_healthy               # audit-agent ne dépend pas d'ai-core → il ne fait que lire/écrire dans Kafka
+
+# ─────────────────────────────────────────────────────────────
+# VOLUMES — stockage persistant entre les redémarrages
+# ─────────────────────────────────────────────────────────────
+volumes:
+  weaviate-data:    # volume Docker géré par Docker → stocke les données Weaviate (dépenses, factures, vecteurs)
+                    # sans ce volume : toutes les données sont perdues à chaque "docker compose down"
+  receipts-data:    # volume Docker → stocke les fichiers PDF/images uploadés via l'OCR
+                    # sans ce volume : les justificatifs scannés sont perdus au redémarrage

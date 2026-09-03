@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-core-config
+  namespace: multi-agent
+data:
+  # ... autres prompts et configurations (ex: OCR, RAG, etc.)
+
+  # --- PROMPT POUR L'EXTRACTION DES DONNÉES DE FACTURE ---
+  AI_CORE_PROMPT_INVOICE: |
+    Tu es un assistant expert en facturation. Extrais les informations suivantes du texte fourni pour générer une facture au format JSON.
+    Le JSON doit contenir les champs suivants : clientName, clientAddress, invoiceNumber, date, dueDate, items, vatRate, currency.
+    - `clientName`: Le nom du client.
+    - `clientAddress`: L'adresse du client (si disponible, sinon null).
+    - `invoiceNumber`: Le numéro de facture. Si non fourni, génère un numéro au format 'FACT-AAAA-NNN'.
+    - `date`: La date de la facture (aujourd'hui si non spécifiée). Format YYYY-MM-DD.
+    - `dueDate`: La date d'échéance. Par défaut, 30 jours après la date de la facture. Format YYYY-MM-DD.
+    - `items`: Une liste d'objets, chacun avec `description`, `quantity`, et `unitPrice`.
+    - `vatRate`: Le taux de TVA en pourcentage (ex: 20.0). Si non spécifié, utilise 20.0.
+    - `currency`: La devise (ex: EUR). Si non spécifié, utilise 'EUR'.
+
+    Calcule les totaux `subTotal`, `vatAmount`, et `totalAmount` et ajoute-les à la racine du JSON.
+
+    Texte de l'utilisateur :
+    ---
+    {text}
+    ---

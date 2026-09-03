@@ -1,0 +1,93 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: ai-core
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ai-core-ingestion
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: latest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  kafka-topics:
+    reasoning-input: ${REASONING_INPUT_TOPIC:reasoning-input-topic}
+    audit-input: ${AUDIT_INPUT_TOPIC:audit.events.in}
+    intent-input: ${INTENT_INPUT_TOPIC:intent-input-topic}
+    workflow-output: ${WORKFLOW_OUTPUT_TOPIC:reassign-output-topic}
+
+  cache:
+    type: caffeine
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ["prometheus", "health", "metrics"]
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+ollama:
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${OLLAMA_MODEL:tinyllama}
+  embedding-model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+  retry:
+    max-attempts: ${OLLAMA_RETRY_MAX_ATTEMPTS:4}
+    base-backoff-ms: ${OLLAMA_RETRY_BASE_BACKOFF_MS:1500}
+    max-backoff-ms: ${OLLAMA_RETRY_MAX_BACKOFF_MS:15000}
+
+ai-core:
+  openai:
+    intent-model: ${AI_CORE_INTENT_MODEL:tinyllama}
+    rewrite-model: ${AI_CORE_REWRITE_MODEL:tinyllama}
+    rag-model: ${AI_CORE_RAG_MODEL:tinyllama}
+    embedding-model: ${AI_CORE_EMBED_MODEL:nomic-embed-text}
+  rag:
+    top-k-search: ${AI_CORE_RAG_TOP_K_SEARCH:20}
+    top-k-context: ${AI_CORE_RAG_TOP_K_CONTEXT:5}
+  reference-date: ${AI_CORE_REFERENCE_DATE:}
+  expense:
+    km-per-day: ${AI_CORE_EXPENSE_KM_PER_DAY:56}
+    km-rate-7cv: ${AI_CORE_EXPENSE_KM_RATE_7CV:0.661}
+    km-annual: ${AI_CORE_EXPENSE_KM_ANNUAL:11000}
+  company-name: ${AI_CORE_COMPANY_NAME:IA-INSIGHT}
+  monthly-location:
+    enabled: ${MONTHLY_LOCATION_ENABLED:true}
+    topic: ${INTENT_INPUT_TOPIC:intent-input-topic}
+    text: ${MONTHLY_LOCATION_TEXT:"je loue pour la domiciliation à 450 EUR ce mois-ci"}
+  ocr:
+    storage-path: ${AI_CORE_RECEIPTS_STORAGE_PATH:/tmp/receipts}
+    tesseract-command: ${AI_CORE_OCR_TESSERACT_CMD:tesseract}
+    pdftoppm-command: ${AI_CORE_OCR_PDFTOPPM_CMD:pdftoppm}
+    lang: ${AI_CORE_OCR_LANG:eng+fra}
+    dpi: ${AI_CORE_OCR_DPI:300}
+  ingestion:
+    topic: ${AI_CORE_DOCUMENTS_TOPIC:documents.raw}
+    chunk-sleep-ms: ${AI_CORE_INGESTION_CHUNK_SLEEP_MS:0}
+
+weaviate:
+  scheme: ${WEAVIATE_SCHEME:http}
+  host: ${WEAVIATE_HOST:?WEAVIATE_HOST is required}
+  class-name: ${WEAVIATE_CLASS:DocumentChunk}
+  expense-class: ${WEAVIATE_EXPENSE_CLASS:Expense}
+  schema-init:
+    max-attempts: ${WEAVIATE_SCHEMA_INIT_MAX_ATTEMPTS:6}
+    backoff: ${WEAVIATE_SCHEMA_INIT_BACKOFF:10s}
+
+caffeine:
+  spec: maximumSize=3000,expireAfterWrite=10m
+
+logging:
+  level:
+    io.multiagent.core.service: DEBUG

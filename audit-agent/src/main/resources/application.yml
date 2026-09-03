@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: audit-agent
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    topics:
+      audit-input: ${AUDIT_INPUT_TOPIC:audit.events.in}
+      audit-output: ${AUDIT_OUTPUT_TOPIC:audit.events.out}
+    consumer:
+      group-id: ${AUDIT_GROUP_ID:audit-agent}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "io.multiagent.audit.dto"
+        spring.json.value.default.type: io.multiagent.audit.dto.AuditEventDTO
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    listener:
+      missing-topics-fatal: false
+server:
+  port: ${SERVER_PORT:8085}

@@ -1,0 +1,10 @@
+.DS_Store
+.openai/
+.vscode/
+
+target/
+**/target/
+
+*.class
+*.log
+github.lock

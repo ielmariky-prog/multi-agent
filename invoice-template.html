@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Facture</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .invoice-details, .client-details { margin-bottom: 30px; line-height: 1.5; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .totals { float: right; width: 40%; margin-top: 20px; }
+        .totals td:first-child { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>FACTURE</h1>
+    </div>
+    <div class="invoice-details">
+        <strong>Facture N°:</strong> <span th:text="${invoice.invoiceNumber}">FACT-001</span><br/>
+        <strong>Date:</strong> <span th:text="${#temporals.format(invoice.date, 'dd/MM/yyyy')}">15/03/2026</span><br/>
+        <strong>Date d'échéance:</strong> <span th:text="${#temporals.format(invoice.dueDate, 'dd/MM/yyyy')}">15/04/2026</span>
+    </div>
+    <div class="client-details">
+        <strong>Client:</strong><br/>
+        <span th:text="${invoice.clientName}">ACME Corp</span><br/>
+        <th:block th:if="${invoice.clientAddress != null}" th:text="${invoice.clientAddress}">123 Main Street, Anytown</th:block>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th>Quantité</th>
+                <th>Prix Unitaire</th>
+                <th>Total HT</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="item : ${invoice.items}">
+                <td th:text="${item.description}">Développement</td>
+                <td th:text="${item.quantity}" style="text-align: center;">5</td>
+                <td th:text="${#numbers.formatDecimal(item.unitPrice, 1, 'WHITESPACE', 2, 'COMMA')} + ' ' + ${invoice.currency}">600,00 EUR</td>
+                <td th:text="${#numbers.formatDecimal(item.quantity * item.unitPrice, 1, 'WHITESPACE', 2, 'COMMA')} + ' ' + ${invoice.currency}">3 000,00 EUR</td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="totals">
+        <table>
+            <tr><td>Total HT</td><td th:text="${#numbers.formatDecimal(subTotal, 1, 'WHITESPACE', 2, 'COMMA')} + ' ' + ${invoice.currency}">3 800,00 EUR</td></tr>
+            <tr><td th:text="'TVA (' + ${invoice.vatRate} + '%)'">TVA (20%)</td><td th:text="${#numbers.formatDecimal(vatAmount, 1, 'WHITESPACE', 2, 'COMMA')} + ' ' + ${invoice.currency}">760,00 EUR</td></tr>
+            <tr><td><strong>Total TTC</strong></td><td th:text="${#numbers.formatDecimal(totalAmount, 1, 'WHITESPACE', 2, 'COMMA')} + ' ' + ${invoice.currency}"><strong>4 560,00 EUR</strong></td></tr>
+        </table>
+    </div>
+</body>
+</html>
